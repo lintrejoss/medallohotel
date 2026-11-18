@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medallotel - Sistema de Recepción</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Menú Lateral -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo">🏨</div>
+        <div>
+          <h2>Medallotel</h2>
+          <span class="brand-subtitle">Control de Recepción</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-section="new-reservation">
+          <span class="nav-icon">📅</span>
+          <span>Nueva Reserva</span>
+        </button>
+        <button class="nav-item" data-section="active-reservations">
+          <span class="nav-icon">📋</span>
+          <span>Reservas Activas</span>
+        </button>
+        <div class="nav-divider"></div>
+        <div class="nav-future-header">Próximas Etapas</div>
+        <button class="nav-item disabled" title="Disponible en Etapa 2" disabled>
+          <span class="nav-icon">☕</span>
+          <span>Consumos y Servicios</span>
+          <span class="badge-soon">Etapa 2</span>
+        </button>
+        <button class="nav-item disabled" title="Disponible en Etapa 3" disabled>
+          <span class="nav-icon">💳</span>
+          <span>Facturación y Pagos</span>
+          <span class="badge-soon">Etapa 3</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p class="user-role">Recepcionista en turno</p>
+        <span class="status-indicator online">Sistema Conectado</span>
+      </div>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <main class="main-content">
+      <header class="top-bar">
+        <h1 id="page-title">Gestión de Reservas</h1>
+        <div class="test-data-pill">
+          💡 Documentos de prueba: <strong>1020304050</strong>, <strong>9876543210</strong>, <strong>458921</strong>
+        </div>
+      </header>
+
+      <!-- SECCIÓN 1: NUEVA RESERVA -->
+      <section id="section-new-reservation" class="content-section active">
+        <div class="section-header">
+          <h2>Registro y Asignación de Habitación</h2>
+          <p class="section-desc">Busca el huésped, consulta disponibilidad para el rango de fechas y confirma la reserva.</p>
+        </div>
+
+        <div class="booking-grid">
+          <!-- Columna Izquierda: Formulario paso a paso -->
+          <div class="form-container">
+            <!-- Paso 1: Huésped -->
+            <div class="card step-card">
+              <div class="step-badge">Paso 1</div>
+              <h3>Identificación del Huésped</h3>
+              <p class="helper-text">Consulta por cédula, pasaporte o cédula de extranjería.</p>
+              
+              <div class="form-group inline-search">
+                <div class="input-wrapper">
+                  <label for="doc-search-input">Número de Documento</label>
+                  <input type="text" id="doc-search-input" placeholder="Ej: 1020304050" autocomplete="off">
+                  <span class="field-error" id="error-doc-search"></span>
+                </div>
+                <button type="button" id="btn-search-guest" class="btn btn-secondary">Buscar Huésped</button>
+              </div>
+
+              <!-- Tarjeta de datos del huésped encontrado -->
+              <div id="guest-result-card" class="info-box hidden">
+                <div class="info-row">
+                  <span class="info-label">Nombre Completo:</span>
+                  <span class="info-value highlight" id="guest-name">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Documento:</span>
+                  <span class="info-value" id="guest-doc">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Teléfono:</span>
+                  <span class="info-value" id="guest-phone">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Correo:</span>
+                  <span class="info-value" id="guest-email">-</span>
+                </div>
+                <input type="hidden" id="selected-guest-id" value="">
+              </div>
+            </div>
+
+            <!-- Paso 2: Fechas y Habitaciones -->
+            <div class="card step-card">
+              <div class="step-badge">Paso 2</div>
+              <h3>Fechas de Estancia y Consulta de Disponibilidad</h3>
+              
+              <div class="dates-row">
+                <div class="form-group">
+                  <label for="check-in-date">Fecha de Entrada (Check-In)</label>
+                  <input type="date" id="check-in-date">
+                  <span class="field-error" id="error-check-in"></span>
+                </div>
+                <div class="form-group">
+                  <label for="check-out-date">Fecha de Salida (Check-Out)</label>
+                  <input type="date" id="check-out-date">
+                  <span class="field-error" id="error-check-out"></span>
+                </div>
+              </div>
+
+              <button type="button" id="btn-check-availability" class="btn btn-primary full-width">
+                🔍 Consultar Habitaciones Disponibles
+              </button>
+              <span class="field-error center-text" id="error-availability-general"></span>
+
+              <!-- Listado de habitaciones disponibles -->
+              <div id="rooms-results-container" class="rooms-container hidden">
+                <div class="rooms-header-summary">
+                  <h4 id="rooms-count-title">Habitaciones Disponibles</h4>
+                  <span class="nights-tag" id="nights-tag">0 noches</span>
+                </div>
+                <span class="field-error" id="error-room-selection"></span>
+
+                <div id="rooms-grid" class="rooms-cards-grid">
+                  <!-- Se llena dinámicamente -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna Derecha: Resumen de Reserva y Confirmación -->
+          <div class="summary-container">
+            <div class="card summary-card">
+              <h3>Resumen de Reserva</h3>
+              <p class="helper-text">Verifica que los datos sean correctos antes de confirmar.</p>
+
+              <div class="summary-details">
+                <div class="summary-line">
+                  <span>Huésped Titular:</span>
+                  <strong id="summary-guest">No seleccionado</strong>
+                </div>
+                <div class="summary-line">
+                  <span>Habitación:</span>
+                  <strong id="summary-room">No seleccionada</strong>
+                </div>
+                <div class="summary-line">
+                  <span>Tipo / Capacidad:</span>
+                  <span id="summary-room-type">-</span>
+                </div>
+                <div class="summary-line">
+                  <span>Fechas:</span>
+                  <span id="summary-dates">-</span>
+                </div>
+                <div class="summary-line">
+                  <span>Noches de estancia:</span>
+                  <span id="summary-nights">0</span>
+                </div>
+                <div class="summary-line">
+                  <span>Tarifa por noche:</span>
+                  <span id="summary-rate">$0 COP</span>
+                </div>
+                <div class="summary-divider"></div>
+                <div class="summary-total">
+                  <span>Total Alojamiento:</span>
+                  <strong id="summary-total">$0 COP</strong>
+                </div>
+              </div>
+
+              <div id="confirm-error-message" class="alert-box alert-error hidden"></div>
+              <div id="confirm-success-message" class="alert-box alert-success hidden"></div>
+
+              <button type="button" id="btn-confirm-reservation" class="btn btn-confirm full-width" disabled>
+                ✅ Confirmar y Registrar Reserva
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECCIÓN 2: RESERVAS ACTIVAS -->
+      <section id="section-active-reservations" class="content-section">
+        <div class="section-header">
+          <h2>Reservas Activas</h2>
+          <p class="section-desc">Listado en tiempo real de estancias vigentes registradas en el sistema.</p>
+        </div>
+
+        <div class="card">
+          <div class="table-actions">
+            <button type="button" id="btn-refresh-reservations" class="btn btn-secondary btn-sm">
+              🔄 Actualizar Lista
+            </button>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="table-reservations">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Huésped</th>
+                  <th>Documento</th>
+                  <th>Habitación</th>
+                  <th>Entrada</th>
+                  <th>Salida</th>
+                  <th>Noches</th>
+                  <th>Total</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="reservations-tbody">
+                <!-- Se llena dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+          <div id="no-reservations-msg" class="empty-state hidden">
+            <p>No hay reservas activas en este momento.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal Detalle de Reserva -->
+  <div id="detail-modal" class="modal-overlay hidden">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 id="modal-title">Detalle de Reserva</h3>
+        <button type="button" class="btn-close-modal" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        <!-- Rellenado dinámico con datos de la reserva -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-modal-close-action">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
