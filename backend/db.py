@@ -60,6 +60,37 @@ def init_db():
     )
     """)
 
+    # Tabla Catálogo de Servicios (Etapa 2)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        price REAL NOT NULL,
+        description TEXT
+    )
+    """)
+
+    # Tabla Consumos asociados a una Reserva (Etapa 2)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS consumptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reservation_id INTEGER NOT NULL,
+        service_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL CHECK(quantity > 0),
+        unit_price REAL NOT NULL,
+        subtotal REAL NOT NULL,
+        consumed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reservation_id) REFERENCES reservations (id),
+        FOREIGN KEY (service_id) REFERENCES services (id)
+    )
+    """)
+
+    # Sembrado de servicios iniciales si no existen
+    cursor.execute("SELECT COUNT(*) FROM services")
+    if cursor.fetchone()[0] == 0:
+        seed_services(cursor)
+
     # Sembrado de datos ficticios iniciales si no existen
     cursor.execute("SELECT COUNT(*) FROM guests")
     if cursor.fetchone()[0] == 0:
@@ -67,6 +98,20 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+def seed_services(cursor):
+    services = [
+        ('Desayuno Buffet Paisa', 'Restaurante', 28000.0, 'Desayuno continental o típico tradicional con café de origen'),
+        ('Lavandería por Prenda', 'Lavandería', 12000.0, 'Lavado, secado y planchado por prenda'),
+        ('Parqueadero por Día', 'Estacionamiento', 20000.0, 'Puesto cubierto con vigilancia 24h por día'),
+        ('Room Service Almuerzo / Cena', 'Restaurante', 38000.0, 'Plato a la carta servido en habitación'),
+        ('Bebida o Snack Minibar', 'Minibar', 9000.0, 'Gaseosa, snack o agua embotellada de minibar'),
+        ('Spa y Masaje Relajante (45 min)', 'Bienestar', 85000.0, 'Sesión individual de masaje relajante')
+    ]
+    cursor.executemany("""
+    INSERT INTO services (name, category, price, description)
+    VALUES (?, ?, ?, ?)
+    """, services)
 
 def seed_data(cursor):
     # Huéspedes ficticios

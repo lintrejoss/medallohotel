@@ -30,13 +30,12 @@
           <span class="nav-icon">📋</span>
           <span>Reservas Activas</span>
         </button>
+        <button class="nav-item" data-section="services-catalog">
+          <span class="nav-icon">☕</span>
+          <span>Catálogo de Servicios</span>
+        </button>
         <div class="nav-divider"></div>
         <div class="nav-future-header">Próximas Etapas</div>
-        <button class="nav-item disabled" title="Disponible en Etapa 2" disabled>
-          <span class="nav-icon">☕</span>
-          <span>Consumos y Servicios</span>
-          <span class="badge-soon">Etapa 2</span>
-        </button>
         <button class="nav-item disabled" title="Disponible en Etapa 3" disabled>
           <span class="nav-icon">💳</span>
           <span>Facturación y Pagos</span>
@@ -232,19 +231,31 @@
             <p>No hay reservas activas en este momento.</p>
           </div>
         </div>
+      <!-- SECCIÓN 3: CATÁLOGO DE SERVICIOS -->
+      <section id="section-services-catalog" class="content-section">
+        <div class="section-header">
+          <h2>Catálogo de Servicios del Hotel</h2>
+          <p class="section-desc">Servicios adicionales y tarifas oficiales disponibles para los huéspedes durante su estancia.</p>
+        </div>
+
+        <div class="card">
+          <div class="services-cards-grid" id="services-catalog-grid">
+            <!-- Se llena dinámicamente con el catálogo -->
+          </div>
+        </div>
       </section>
     </main>
   </div>
 
-  <!-- Modal Detalle de Reserva -->
+  <!-- Modal Detalle de Reserva y Registro de Consumos -->
   <div id="detail-modal" class="modal-overlay hidden">
-    <div class="modal-window">
+    <div class="modal-window modal-window-large">
       <div class="modal-header">
         <h3 id="modal-title">Detalle de Reserva</h3>
         <button type="button" class="btn-close-modal" id="btn-close-modal">&times;</button>
       </div>
       <div class="modal-body" id="modal-content">
-        <!-- Rellenado dinámico con datos de la reserva -->
+        <!-- Rellenado dinámico con datos de la reserva y consumos -->
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="btn-modal-close-action">Cerrar</button>

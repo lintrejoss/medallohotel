@@ -22,7 +22,10 @@ from backend.services import (
     get_available_rooms,
     create_reservation,
     get_active_reservations,
-    get_reservation_detail
+    get_reservation_detail,
+    get_services_catalog,
+    get_reservation_consumptions,
+    add_consumption_to_reservation
 )
 
 PORT = 8000
@@ -83,6 +86,19 @@ class MedallotelRequestHandler(http.server.BaseHTTPRequestHandler):
                     reservations = get_active_reservations()
                     self.send_json(200, {"success": True, "data": reservations})
                     return
+
+                elif path == '/api/services':
+                    catalog = get_services_catalog()
+                    self.send_json(200, {"success": True, "data": catalog})
+                    return
+
+                elif path.startswith('/api/reservations/') and path.endswith('/consumptions'):
+                    parts = path.strip('/').split('/')
+                    if len(parts) == 4 and parts[2].isdigit():
+                        res_id = int(parts[2])
+                        consumptions = get_reservation_consumptions(res_id)
+                        self.send_json(200, {"success": True, "data": consumptions})
+                        return
 
                 elif path.startswith('/api/reservations/'):
                     res_id_str = path.split('/')[-1]
@@ -150,6 +166,24 @@ class MedallotelRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error_json(400, e.message, e.field)
             except Exception as e:
                 self.send_error_json(500, f"Error interno al crear reserva: {str(e)}")
+            return
+
+        elif path.startswith('/api/reservations/') and path.endswith('/consumptions'):
+            try:
+                parts = path.strip('/').split('/')
+                if len(parts) == 4 and parts[2].isdigit():
+                    res_id = int(parts[2])
+                    data = self.parse_json_body()
+                    service_id = data.get('service_id')
+                    quantity = data.get('quantity')
+                    new_item = add_consumption_to_reservation(res_id, service_id, quantity)
+                    self.send_json(201, {"success": True, "data": new_item})
+                    return
+                self.send_json(404, {"success": False, "error": "Ruta inválida."})
+            except BusinessError as e:
+                self.send_error_json(400, e.message, e.field)
+            except Exception as e:
+                self.send_error_json(500, f"Error interno al registrar consumo: {str(e)}")
             return
 
         self.send_json(404, {"success": False, "error": "Endpoint no encontrado."})

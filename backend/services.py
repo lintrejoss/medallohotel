@@ -174,4 +174,96 @@ def get_reservation_detail(res_id):
 
     if not row:
         return None
-    return dict(row)
+    detail = dict(row)
+    # Incluir consumos asociados a la reserva
+    detail['consumptions'] = get_reservation_consumptions(res_id)
+    detail['total_consumptions'] = sum(c['subtotal'] for c in detail['consumptions'])
+    detail['grand_total'] = detail['total_lodging'] + detail['total_consumptions']
+    return detail
+
+# ==========================================
+# SERVICIOS Y CONSUMOS (ETAPA 2)
+# ==========================================
+
+def get_services_catalog():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT id, name, category, price, description
+    FROM services
+    ORDER BY category ASC, name ASC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_reservation_consumptions(reservation_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT c.id, c.reservation_id, c.service_id, c.quantity, c.unit_price, c.subtotal, c.consumed_at,
+           s.name as service_name, s.category as service_category
+    FROM consumptions c
+    JOIN services s ON c.service_id = s.id
+    WHERE c.reservation_id = ?
+    ORDER BY c.id DESC
+    """, (reservation_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_consumption_to_reservation(reservation_id, service_id, quantity):
+    if not reservation_id:
+        raise BusinessError("Identificador de reserva requerido.", field="reservation_id")
+    if not service_id:
+        raise BusinessError("Debe seleccionar un servicio del catálogo.", field="service_id")
+
+    try:
+        qty = int(quantity)
+        if qty <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise BusinessError("La cantidad debe ser un número entero mayor a 0.", field="quantity")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Validar que la reserva exista y esté activa
+    cursor.execute("SELECT id, code, status FROM reservations WHERE id = ?", (reservation_id,))
+    reservation = cursor.fetchone()
+    if not reservation:
+        conn.close()
+        raise BusinessError("La reserva no existe.", field="reservation_id")
+    if reservation['status'] != 'ACTIVA':
+        conn.close()
+        raise BusinessError("Solo se pueden agregar consumos a reservas en estado ACTIVA.", field="reservation_id")
+
+    # Obtener el servicio y su precio actual
+    cursor.execute("SELECT id, name, price FROM services WHERE id = ?", (service_id,))
+    service = cursor.fetchone()
+    if not service:
+        conn.close()
+        raise BusinessError("El servicio seleccionado no existe.", field="service_id")
+
+    unit_price = service['price']
+    subtotal = unit_price * qty
+
+    cursor.execute("""
+    INSERT INTO consumptions (reservation_id, service_id, quantity, unit_price, subtotal)
+    VALUES (?, ?, ?, ?, ?)
+    """, (reservation_id, service_id, qty, unit_price, subtotal))
+
+    consumption_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": consumption_id,
+        "reservation_id": reservation_id,
+        "service_id": service_id,
+        "service_name": service['name'],
+        "quantity": qty,
+        "unit_price": unit_price,
+        "subtotal": subtotal
+    }
+

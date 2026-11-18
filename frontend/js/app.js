@@ -9,7 +9,9 @@ const state = {
   checkOut: null,
   nights: 0,
   availableRooms: [],
-  selectedRoom: null
+  selectedRoom: null,
+  servicesCatalog: [],
+  currentModalReservationId: null
 };
 
 // Formato de moneda COP
@@ -73,6 +75,8 @@ function setupNavigation() {
 
       if (targetSection === 'active-reservations') {
         loadActiveReservations();
+      } else if (targetSection === 'services-catalog') {
+        loadServicesCatalog();
       }
     });
   });
@@ -410,80 +414,261 @@ function setupModal() {
   });
 }
 
+// ==========================================
+// ETAPA 2: CATÁLOGO DE SERVICIOS Y CONSUMOS
+// ==========================================
+
+async function loadServicesCatalog() {
+  const grid = document.getElementById('services-catalog-grid');
+  grid.innerHTML = '<p style="color: var(--text-muted); padding: 1rem;">Cargando catálogo de servicios...</p>';
+
+  try {
+    const res = await fetch('/api/services');
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      grid.innerHTML = `<p style="color: red;">Error al cargar catálogo: ${result.error}</p>`;
+      return;
+    }
+
+    state.servicesCatalog = result.data;
+    grid.innerHTML = '';
+    state.servicesCatalog.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'service-card';
+      card.innerHTML = `
+        <span class="service-category-tag">${s.category}</span>
+        <h4 class="service-name">${s.name}</h4>
+        <p class="service-description">${s.description || 'Servicio hotelero oficial'}</p>
+        <div class="service-price">${formatCOP(s.price)}</div>
+      `;
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    grid.innerHTML = '<p style="color: red;">Error de conexión con el catálogo.</p>';
+  }
+}
+
+async function fetchServicesCatalogIfNeeded() {
+  if (state.servicesCatalog.length === 0) {
+    try {
+      const res = await fetch('/api/services');
+      const result = await res.json();
+      if (res.ok && result.success) {
+        state.servicesCatalog = result.data;
+      }
+    } catch (e) {}
+  }
+}
+
 async function openReservationModal(resId) {
+  state.currentModalReservationId = resId;
   const modal = document.getElementById('detail-modal');
   const content = document.getElementById('modal-content');
-  content.innerHTML = '<p style="text-align: center; padding: 1rem;">Cargando detalle...</p>';
+  content.innerHTML = '<p style="text-align: center; padding: 1.5rem;">Cargando información y consumos de la reserva...</p>';
   modal.classList.remove('hidden');
+
+  await fetchServicesCatalogIfNeeded();
 
   try {
     const res = await fetch(`/api/reservations/${resId}`);
     const result = await res.json();
 
     if (!res.ok || !result.success) {
-      content.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
+      content.innerHTML = `<p style="color: red; padding: 1rem;">Error: ${result.error}</p>`;
       return;
     }
 
     const d = result.data;
-    content.innerHTML = `
-      <div class="modal-detail-grid">
-        <div class="detail-item">
-          <span class="lbl">Código de Reserva</span>
-          <span class="val highlight" style="color: var(--primary); font-size: 1.1rem;">${d.code}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Estado Actual</span>
-          <span class="val"><span class="badge-status badge-activa">${d.status}</span></span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Huésped Titular</span>
-          <span class="val">${d.first_name} ${d.last_name}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Documento de Identidad</span>
-          <span class="val">${d.doc_type} ${d.doc_number}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Teléfono / Contacto</span>
-          <span class="val">${d.phone || 'No registrado'}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Correo Electrónico</span>
-          <span class="val">${d.email || 'No registrado'}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Habitación Asignada</span>
-          <span class="val">Habitación ${d.room_number} (${d.room_type})</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Capacidad Habitación</span>
-          <span class="val">${d.capacity} personas</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Fecha de Entrada</span>
-          <span class="val">${d.check_in_date}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Fecha de Salida</span>
-          <span class="val">${d.check_out_date}</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Noches de Estancia</span>
-          <span class="val">${d.total_nights} noches</span>
-        </div>
-        <div class="detail-item">
-          <span class="lbl">Tarifa por Noche</span>
-          <span class="val">${formatCOP(d.nightly_rate)}</span>
-        </div>
-      </div>
-      <div class="summary-divider" style="margin: 1.25rem 0;"></div>
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 600; font-size: 1.05rem;">Total Alojamiento:</span>
-        <strong style="color: var(--primary); font-size: 1.3rem;">${formatCOP(d.total_lodging)}</strong>
-      </div>
-    `;
+    renderReservationDetailContent(d);
   } catch (err) {
-    content.innerHTML = '<p style="color: red;">Error al obtener la información de la reserva.</p>';
+    content.innerHTML = '<p style="color: red; padding: 1rem;">Error al obtener la información de la reserva.</p>';
   }
 }
+
+function renderReservationDetailContent(d) {
+  const content = document.getElementById('modal-content');
+
+  // Renderizar filas de consumos existentes
+  let consumptionsTableRows = '';
+  if (!d.consumptions || d.consumptions.length === 0) {
+    consumptionsTableRows = `
+      <tr>
+        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1rem;">
+          No hay consumos registrados para esta reserva.
+        </td>
+      </tr>
+    `;
+  } else {
+    consumptionsTableRows = d.consumptions.map(c => `
+      <tr>
+        <td><strong>${c.service_name}</strong><br><small style="color:var(--text-muted)">${c.service_category}</small></td>
+        <td>${c.quantity}</td>
+        <td>${formatCOP(c.unit_price)}</td>
+        <td><strong>${formatCOP(c.subtotal)}</strong></td>
+        <td><small style="color:var(--text-muted)">${c.consumed_at ? c.consumed_at.slice(0, 16) : '-'}</small></td>
+      </tr>
+    `).join('');
+  }
+
+  // Opciones de servicios para el selector
+  const serviceOptions = state.servicesCatalog.map(s => `
+    <option value="${s.id}">
+      ${s.name} - ${formatCOP(s.price)} (${s.category})
+    </option>
+  `).join('');
+
+  content.innerHTML = `
+    <!-- Datos de la Estancia -->
+    <div class="modal-detail-grid">
+      <div class="detail-item">
+        <span class="lbl">Código de Reserva</span>
+        <span class="val" style="color: var(--primary); font-size: 1.1rem;">${d.code}</span>
+      </div>
+      <div class="detail-item">
+        <span class="lbl">Estado Actual</span>
+        <span class="val"><span class="badge-status badge-activa">${d.status}</span></span>
+      </div>
+      <div class="detail-item">
+        <span class="lbl">Huésped Titular</span>
+        <span class="val">${d.first_name} ${d.last_name} (${d.doc_type} ${d.doc_number})</span>
+      </div>
+      <div class="detail-item">
+        <span class="lbl">Habitación Asignada</span>
+        <span class="val">Hab. ${d.room_number} (${d.room_type})</span>
+      </div>
+      <div class="detail-item">
+        <span class="lbl">Fechas de Estancia</span>
+        <span class="val">${d.check_in_date} al ${d.check_out_date} (${d.total_nights} noches)</span>
+      </div>
+      <div class="detail-item">
+        <span class="lbl">Tarifa Alojamiento</span>
+        <span class="val">${formatCOP(d.nightly_rate)} / noche</span>
+      </div>
+    </div>
+
+    <!-- Sección Etapa 2: Consumos y Servicios -->
+    <div class="consumptions-section">
+      <h4>🛒 Registro de Consumos y Servicios</h4>
+      <p class="helper-text" style="margin-bottom: 0.75rem;">Agrega consumos de restaurante, lavandería u otros servicios del catálogo a esta estancia.</p>
+
+      <div class="consumption-form-box">
+        <form id="form-add-consumption" onsubmit="event.preventDefault(); handleAddConsumption(${d.id});">
+          <div class="consumption-form-grid">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="select-service">Servicio del Catálogo</label>
+              <select id="select-service" required>
+                <option value="">-- Selecciona un servicio --</option>
+                ${serviceOptions}
+              </select>
+              <span class="field-error" id="error-consumption-service"></span>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="input-qty">Cantidad</label>
+              <input type="number" id="input-qty" min="1" value="1" required style="padding: 0.65rem 0.85rem;">
+              <span class="field-error" id="error-consumption-qty"></span>
+            </div>
+
+            <button type="submit" id="btn-submit-consumption" class="btn btn-primary" style="height: 42px;">
+              ➕ Agregar
+            </button>
+          </div>
+          <span class="field-error" id="error-consumption-general"></span>
+        </form>
+      </div>
+
+      <!-- Tabla de consumos registrados -->
+      <h5 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; color: #334155;">Consumos Registrados en la Estancia</h5>
+      <div class="table-wrapper">
+        <table class="data-table" style="font-size: 0.825rem;">
+          <thead>
+            <tr>
+              <th>Servicio</th>
+              <th>Cantidad</th>
+              <th>Precio Aplicado</th>
+              <th>Subtotal</th>
+              <th>Fecha/Hora</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${consumptionsTableRows}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Totales Acumulados -->
+      <div class="consumption-totals-box">
+        <div class="totals-row">
+          <span>Subtotal Alojamiento (${d.total_nights} noches):</span>
+          <span>${formatCOP(d.total_lodging)}</span>
+        </div>
+        <div class="totals-row">
+          <span>Subtotal Servicios y Consumos:</span>
+          <span style="font-weight: 600; color: #0f172a;">${formatCOP(d.total_consumptions || 0)}</span>
+        </div>
+        <div class="totals-row grand-total">
+          <span>Total Acumulado a Facturar:</span>
+          <span>${formatCOP(d.grand_total || d.total_lodging)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Acción de agregar consumo
+window.handleAddConsumption = async function(reservationId) {
+  const serviceSelect = document.getElementById('select-service');
+  const qtyInput = document.getElementById('input-qty');
+  const btnSubmit = document.getElementById('btn-submit-consumption');
+  const errService = document.getElementById('error-consumption-service');
+  const errQty = document.getElementById('error-consumption-qty');
+  const errGeneral = document.getElementById('error-consumption-general');
+
+  errService.textContent = '';
+  errQty.textContent = '';
+  errGeneral.textContent = '';
+
+  const serviceId = serviceSelect.value;
+  const quantity = parseInt(qtyInput.value, 10);
+
+  if (!serviceId) {
+    errService.textContent = 'Selecciona un servicio.';
+    return;
+  }
+  if (!quantity || quantity <= 0) {
+    errQty.textContent = 'Cantidad inválida.';
+    return;
+  }
+
+  btnSubmit.disabled = true;
+  btnSubmit.textContent = 'Guardando...';
+
+  try {
+    const res = await fetch(`/api/reservations/${reservationId}/consumptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service_id: parseInt(serviceId, 10), quantity: quantity })
+    });
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      if (result.field === 'service_id') errService.textContent = result.error;
+      else if (result.field === 'quantity') errQty.textContent = result.error;
+      else errGeneral.textContent = result.error || 'Error al agregar consumo.';
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = '➕ Agregar';
+      return;
+    }
+
+    // Recargar el detalle de la reserva con los nuevos consumos calculados
+    const updatedRes = await fetch(`/api/reservations/${reservationId}`);
+    const updatedData = await updatedRes.json();
+    if (updatedData.success) {
+      renderReservationDetailContent(updatedData.data);
+    }
+  } catch (err) {
+    errGeneral.textContent = 'Error al comunicarse con el servidor.';
+    btnSubmit.disabled = false;
+    btnSubmit.textContent = '➕ Agregar';
+  }
+};
