@@ -1,5 +1,7 @@
 """API REST de Medallotel (solo librería estándar). Ejecutar: python server.py"""
 import json
+import mimetypes
+import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -7,6 +9,8 @@ import db
 import services as svc
 
 PORT = 8000
+FRONTEND_DIR = os.path.realpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"))
 
 
 def _body(h, groups):
@@ -33,6 +37,7 @@ ROUTES = [
         int(i), h.body.get("service_id"), h.body.get("quantity", 1)))),
     # ETAPA 3
     ("POST", r"/api/reservations/(\d+)/invoice", lambda h, i: (200, svc.generate_invoice(int(i)))),
+    ("GET", r"/api/invoices", lambda h: (200, svc.list_invoices())),
     ("GET", r"/api/invoices/(\d+)", lambda h, i: (200, svc.get_invoice_detail(invoice_id=int(i)))),
     ("POST", r"/api/invoices/(\d+)/payments", lambda h, i: (201, svc.register_payment(
         int(i), h.body.get("amount"), h.body.get("payment_method"), h.body.get("reference")))),
@@ -74,8 +79,29 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa
             self._send(500, {"error": f"Error interno: {e}"})
 
+    def _serve_static(self):
+        """Sirve los archivos de frontend/ (index.html por defecto)."""
+        rel = self.path.split("?")[0].lstrip("/") or "index.html"
+        full = os.path.realpath(os.path.join(FRONTEND_DIR, rel))
+        if not full.startswith(FRONTEND_DIR + os.sep) or not os.path.isfile(full):
+            return self._send(404, {"error": "Ruta no encontrada"})
+        ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
+            ctype += "; charset=utf-8"
+        with open(full, "rb") as f:
+            raw = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(raw)
+
     def do_GET(self):
-        self._dispatch("GET")
+        if self.path.split("?")[0].startswith("/api"):
+            self._dispatch("GET")
+        else:
+            self._serve_static()
 
     def do_POST(self):
         self._dispatch("POST")

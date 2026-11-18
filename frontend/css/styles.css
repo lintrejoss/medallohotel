@@ -828,3 +828,310 @@ input:focus {
 .hidden {
   display: none !important;
 }
+
+/* ==========================================
+   ETAPA 3: FACTURACIÓN Y PAGOS
+   ========================================== */
+
+/* Controles de formulario adicionales (número y selector) */
+input[type="number"],
+.payment-form select {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  font-family: inherit;
+  background: #ffffff;
+  transition: border-color 0.2s;
+}
+.payment-form select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.plain-fieldset {
+  border: none;
+  min-width: 0;
+}
+.plain-fieldset:disabled {
+  opacity: 0.55;
+}
+.plain-fieldset:disabled .btn {
+  cursor: not-allowed;
+}
+
+.alert-info {
+  background: var(--primary-light);
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+/* Badges de estado de factura */
+.badge-inv-pendiente {
+  background: #fef3c7;
+  color: #b45309;
+}
+.badge-inv-parcialmente_pagada {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.badge-inv-pagada {
+  background: #dcfce7;
+  color: #15803d;
+}
+.badge-inv-sin_facturar {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* Sección de facturación en el modal */
+.billing-modal-section {
+  margin-top: 1.75rem;
+  border-top: 2px dashed var(--border);
+  padding-top: 1.25rem;
+}
+.billing-modal-section h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.75rem;
+}
+
+/* Panel de factura */
+.billing-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.billing-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.invoice-number {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.02em;
+}
+.invoice-number.invoice-none {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+.invoice-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.invoice-totals {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.25rem;
+  margin: 1rem 0;
+}
+.invoice-totals .total-due {
+  font-weight: 700;
+  font-size: 1.05rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.4rem;
+  padding-top: 0.5rem;
+}
+.invoice-totals .total-paid {
+  color: #15803d;
+  font-weight: 600;
+}
+.invoice-totals .balance-row {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #b45309;
+  background: #fffbeb;
+  border-radius: var(--radius-sm);
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.65rem;
+}
+.invoice-totals .balance-row.balance-zero {
+  color: #15803d;
+  background: var(--success-bg);
+}
+
+/* Formulario de pago */
+.payment-form {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+.payment-form-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 0.75rem;
+}
+.payment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+}
+.payment-grid .payment-ref {
+  grid-column: 1 / -1;
+}
+.amount-wrap {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.amount-wrap .btn {
+  white-space: nowrap;
+}
+.payment-form .btn-confirm {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.paid-banner {
+  background: var(--success-bg);
+  color: #065f46;
+  border: 2px solid #6ee7b7;
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.85rem;
+}
+
+/* Sección "Facturación y Cobros" */
+.billing-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+.billing-list-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-right: auto;
+}
+.billing-list-card .table-actions {
+  justify-content: space-between;
+  align-items: center;
+}
+.billing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.billing-item {
+  text-align: left;
+  font-family: inherit;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.billing-item:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-hover);
+}
+.billing-item.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.billing-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.billing-item-guest {
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+.billing-item-meta,
+.billing-item-balance {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.billing-item-balance strong {
+  color: #b45309;
+}
+
+.billing-placeholder {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem 1.5rem;
+}
+.billing-placeholder-icon {
+  display: block;
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Ficha de factura estilo recibo hotelero */
+.billing-panel-receipt {
+  border-top: 5px solid var(--primary);
+  padding-top: 1rem;
+}
+.receipt-hotel {
+  text-align: center;
+  border-bottom: 1px dashed #cbd5e1;
+  padding-bottom: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+.receipt-brand {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+.receipt-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.receipt-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 1rem;
+  margin-bottom: 1rem;
+}
+.receipt-meta span {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.receipt-meta strong {
+  font-size: 0.92rem;
+}
+
+@media (max-width: 1000px) {
+  .billing-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .payment-grid,
+  .receipt-meta {
+    grid-template-columns: 1fr;
+  }
+  .billing-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.billing-list-card .btn-sm {
+  white-space: nowrap;
+}

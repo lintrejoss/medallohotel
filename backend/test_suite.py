@@ -79,6 +79,14 @@ class TestInvoicing(BaseTest):
         inv = svc.generate_invoice(rid)
         self.assertEqual(svc.get_invoice_detail(reservation_id=rid)["id"], inv["id"])
 
+    def test_list_invoices(self):
+        self.assertEqual(svc.list_invoices(), [])
+        rid = self.make_reservation()
+        inv = svc.generate_invoice(rid)
+        listed = svc.list_invoices()
+        self.assertEqual([i["id"] for i in listed], [inv["id"]])
+        self.assertEqual(listed[0]["reservation_id"], rid)
+
     def test_valid_payment(self):
         inv = svc.generate_invoice(self.make_reservation(2, 100000.0))
         res = svc.register_payment(inv["id"], 50000.0, "EFECTIVO", "recibo 1")

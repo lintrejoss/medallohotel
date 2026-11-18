@@ -218,6 +218,12 @@ def generate_invoice(reservation_id):
         return _build_invoice_detail(conn, cur.lastrowid)
 
 
+def list_invoices():
+    """Resumen de todas las facturas (sin detalle de ítems ni pagos)."""
+    with get_connection() as conn:
+        return [dict(r) for r in conn.execute("SELECT * FROM invoices ORDER BY id DESC")]
+
+
 def get_invoice_detail(invoice_id=None, reservation_id=None):
     if invoice_id is None and reservation_id is None:
         raise ValidationError("Debe indicar invoice_id o reservation_id")

@@ -34,12 +34,9 @@
           <span class="nav-icon">☕</span>
           <span>Catálogo de Servicios</span>
         </button>
-        <div class="nav-divider"></div>
-        <div class="nav-future-header">Próximas Etapas</div>
-        <button class="nav-item disabled" title="Disponible en Etapa 3" disabled>
+        <button class="nav-item" data-section="billing">
           <span class="nav-icon">💳</span>
           <span>Facturación y Pagos</span>
-          <span class="badge-soon">Etapa 3</span>
         </button>
       </nav>
 
@@ -53,16 +50,13 @@
     <main class="main-content">
       <header class="top-bar">
         <h1 id="page-title">Gestión de Reservas</h1>
-        <div class="test-data-pill">
-          💡 Documentos de prueba: <strong>1020304050</strong>, <strong>9876543210</strong>, <strong>458921</strong>
-        </div>
       </header>
 
       <!-- SECCIÓN 1: NUEVA RESERVA -->
       <section id="section-new-reservation" class="content-section active">
         <div class="section-header">
           <h2>Registro y Asignación de Habitación</h2>
-          <p class="section-desc">Busca el huésped, consulta disponibilidad para el rango de fechas y confirma la reserva.</p>
+          <p class="section-desc">Ingresa los datos del huésped, consulta disponibilidad para el rango de fechas y confirma la reserva.</p>
         </div>
 
         <div class="booking-grid">
@@ -71,37 +65,20 @@
             <!-- Paso 1: Huésped -->
             <div class="card step-card">
               <div class="step-badge">Paso 1</div>
-              <h3>Identificación del Huésped</h3>
-              <p class="helper-text">Consulta por cédula, pasaporte o cédula de extranjería.</p>
-              
-              <div class="form-group inline-search">
-                <div class="input-wrapper">
-                  <label for="doc-search-input">Número de Documento</label>
-                  <input type="text" id="doc-search-input" placeholder="Ej: 1020304050" autocomplete="off">
-                  <span class="field-error" id="error-doc-search"></span>
-                </div>
-                <button type="button" id="btn-search-guest" class="btn btn-secondary">Buscar Huésped</button>
-              </div>
+              <h3>Datos del Huésped Titular</h3>
+              <p class="helper-text">Ingresa el nombre completo y, opcionalmente, el documento de identidad.</p>
 
-              <!-- Tarjeta de datos del huésped encontrado -->
-              <div id="guest-result-card" class="info-box hidden">
-                <div class="info-row">
-                  <span class="info-label">Nombre Completo:</span>
-                  <span class="info-value highlight" id="guest-name">-</span>
+              <div class="dates-row">
+                <div class="form-group">
+                  <label for="guest-name-input">Nombre Completo</label>
+                  <input type="text" id="guest-name-input" placeholder="Ej: Ana Pérez" autocomplete="off">
+                  <span class="field-error" id="error-guest-name"></span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">Documento:</span>
-                  <span class="info-value" id="guest-doc">-</span>
+                <div class="form-group">
+                  <label for="guest-doc-input">Documento (opcional)</label>
+                  <input type="text" id="guest-doc-input" placeholder="Ej: 1020304050" autocomplete="off">
+                  <span class="field-error" id="error-guest-doc"></span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">Teléfono:</span>
-                  <span class="info-value" id="guest-phone">-</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Correo:</span>
-                  <span class="info-value" id="guest-email">-</span>
-                </div>
-                <input type="hidden" id="selected-guest-id" value="">
               </div>
             </div>
 
@@ -217,7 +194,7 @@
                   <th>Entrada</th>
                   <th>Salida</th>
                   <th>Noches</th>
-                  <th>Total</th>
+                  <th>Alojamiento</th>
                   <th>Estado</th>
                   <th>Acción</th>
                 </tr>
@@ -231,6 +208,8 @@
             <p>No hay reservas activas en este momento.</p>
           </div>
         </div>
+      </section>
+
       <!-- SECCIÓN 3: CATÁLOGO DE SERVICIOS -->
       <section id="section-services-catalog" class="content-section">
         <div class="section-header">
@@ -241,6 +220,34 @@
         <div class="card">
           <div class="services-cards-grid" id="services-catalog-grid">
             <!-- Se llena dinámicamente con el catálogo -->
+          </div>
+        </div>
+      </section>
+
+      <!-- SECCIÓN 4: FACTURACIÓN Y COBROS (ETAPA 3) -->
+      <section id="section-billing" class="content-section">
+        <div class="section-header">
+          <h2>Facturación y Cobros</h2>
+          <p class="section-desc">Selecciona una reserva pendiente de pago para generar su factura y registrar abonos.</p>
+        </div>
+
+        <div class="billing-grid">
+          <div class="card billing-list-card">
+            <div class="table-actions">
+              <h3 class="billing-list-title">Reservas pendientes de pago</h3>
+              <button type="button" id="btn-refresh-billing" class="btn btn-secondary btn-sm">🔄 Actualizar</button>
+            </div>
+            <div id="billing-list" class="billing-list"></div>
+            <div id="billing-list-empty" class="empty-state hidden">
+              <p>No hay reservas pendientes de pago.</p>
+            </div>
+          </div>
+
+          <div class="billing-detail" id="billing-detail">
+            <div class="card billing-placeholder">
+              <span class="billing-placeholder-icon">🧾</span>
+              <p>Selecciona una reserva de la lista para ver o generar su factura.</p>
+            </div>
           </div>
         </div>
       </section>

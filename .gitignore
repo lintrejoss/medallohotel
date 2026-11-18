@@ -3,3 +3,5 @@ __pycache__/
 *$py.class
 database/medallotel.db
 .DS_Store
+backend/medallotel.db
+*.db

@@ -106,3 +106,21 @@ medallohotel/
 3. Haz clic en **"Consultar Habitaciones Disponibles"**.
 4. **Resultado en la búsqueda:** La **Habitación 101** no aparecerá en la lista de disponibles (tampoco la `302` por estar fuera de servicio).
 5. Si un cliente o petición externa intenta forzar la reserva para la habitación `101` en ese rango, el backend rechaza la transacción con el error: *"La habitación 101 ya tiene la reserva activa RES-MED-001 entre el 2026-12-01 y 2026-12-05"*.
+
+---
+
+## 💳 Etapa 3: Facturación y Pagos (interfaz)
+
+En el menú lateral, **"Facturación y Pagos"** abre la sección *Facturación y Cobros*: lista las reservas vigentes pendientes de pago (sin factura, `PENDIENTE` o `PARCIALMENTE_PAGADA`) y muestra la ficha de factura tipo recibo. La misma ficha aparece en **Reservas Activas → Ver Detalle → Facturación y Saldo**.
+
+- **📄 Generar / Consultar Factura:** genera la factura (`FAC-AAAAMMDD-NNNN`) o la consulta si ya existe. Al facturar, la reserva ya no admite más consumos.
+- **💳 Registrar Pago:** método (Efectivo, Tarjeta, Transferencia), monto (validado en vivo: > 0 y ≤ saldo) y referencia opcional. El saldo, el estado y el historial se actualizan sin recargar la página.
+- Con saldo `$0` el formulario se deshabilita y se muestra *"Factura Pagada en su totalidad"*.
+
+Endpoints usados: `POST /api/reservations/{id}/invoice`, `GET /api/invoices`, `GET /api/invoices/{id}`, `POST /api/invoices/{id}/payments`.
+
+> **Nota:** el servidor ahora sirve `frontend/` directamente en `http://localhost:8000`. La base de datos (`backend/medallotel.db`) se crea vacía; para probar, crea habitaciones y servicios con la API, por ejemplo:
+> ```bash
+> curl -X POST localhost:8000/api/rooms -H 'Content-Type: application/json' -d '{"number":"101","price_per_night":150000,"room_type":"SENCILLA"}'
+> curl -X POST localhost:8000/api/services -H 'Content-Type: application/json' -d '{"name":"Desayuno","price":15000}'
+> ```
