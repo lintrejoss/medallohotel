@@ -7,7 +7,13 @@ import socketserver
 import json
 import urllib.parse
 import os
+import sys
 import mimetypes
+
+# Asegurar que la ruta base esté en sys.path para soportar tanto ejecución directa como módulo
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 from backend.db import init_db
 from backend.services import (
