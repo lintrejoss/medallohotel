@@ -13,7 +13,7 @@ class BaseTest(unittest.TestCase):
         fd, self.path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         db.DB_PATH = self.path
-        db.init_db()
+        db.init_db(seed_defaults=False)
 
     def tearDown(self):
         os.remove(self.path)
@@ -64,11 +64,12 @@ class TestInvoicing(BaseTest):
         self.assertEqual(len(inv["items"]["services"]), 2)
         self.assertEqual(inv["items"]["lodging"]["nights"], 3)
 
-    def test_generate_invoice_is_idempotent(self):
+    def test_duplicate_invoice_raises_conflict(self):
         rid = self.make_reservation()
-        a, b = svc.generate_invoice(rid), svc.generate_invoice(rid)
-        self.assertEqual(a["id"], b["id"])
-        self.assertEqual(a["invoice_number"], b["invoice_number"])
+        inv1 = svc.generate_invoice(rid)
+        self.assertIsNotNone(inv1)
+        with self.assertRaises(svc.ConflictError):
+            svc.generate_invoice(rid)
 
     def test_invoice_unknown_reservation(self):
         with self.assertRaises(NotFoundError):
@@ -117,9 +118,9 @@ class TestInvoicing(BaseTest):
     def test_status_transitions(self):
         inv = svc.generate_invoice(self.make_reservation(2, 100000.0))
         self.assertEqual(inv["status"], "PENDIENTE")
-        r1 = svc.register_payment(inv["id"], 80000.0, "TARJETA", "AUT-1")
+        r1 = svc.register_payment(inv["id"], 80000.0, "TARJETA", card_last4="4321", auth_number="AUT-1")
         self.assertEqual(r1["status"], "PARCIALMENTE_PAGADA")
-        r2 = svc.register_payment(inv["id"], 120000.0, "TRANSFERENCIA", "TRX-9")
+        r2 = svc.register_payment(inv["id"], 120000.0, "TRANSFERENCIA", reference="TRX-999")
         self.assertEqual(r2["status"], "PAGADA")
         self.assertEqual(r2["balance"], 0.0)
         self.assertEqual(len(r2["payments"]), 2)
@@ -132,6 +133,109 @@ class TestInvoicing(BaseTest):
         s = svc.create_service("Minibar", 5000)
         with self.assertRaises(ValidationError):
             svc.add_consumption(rid, s["id"], 1)
+
+
+class TestPermissionsAndAudit(BaseTest):
+    def setUp(self):
+        super().setUp()
+        # Inicializar usuarios
+        db.init_db(seed_defaults=True)
+
+    def test_auth_login_and_roles(self):
+        admin_auth = svc.authenticate_user("admin", "admin123")
+        self.assertEqual(admin_auth["user"]["role"], "ADMINISTRADOR")
+        self.assertIsNotNone(admin_auth["token"])
+
+        recep_auth = svc.authenticate_user("recepcion", "recep123")
+        self.assertEqual(recep_auth["user"]["role"], "RECEPCIONISTA")
+
+        # Credenciales incorrectas
+        with self.assertRaises(svc.AuthenticationError):
+            svc.authenticate_user("admin", "clave_erronea")
+
+    def test_permission_denied_for_non_admin(self):
+        recep_user = svc.authenticate_user("recepcion", "recep123")["user"]
+        # Recepcionista no puede crear servicios (exclusivo Administrador)
+        with self.assertRaises(svc.PermissionDeniedError):
+            svc.require_role(recep_user, ["ADMINISTRADOR"])
+
+        admin_user = svc.authenticate_user("admin", "admin123")["user"]
+        # Administrador sí tiene permiso
+        svc.require_role(admin_user, ["ADMINISTRADOR"])
+
+    def test_audit_logs_recorded(self):
+        admin_auth = svc.authenticate_user("admin", "admin123")
+        room = svc.create_room("901", 100000.0)
+        res = svc.create_reservation("Invitado Audit", room["id"], "2026-11-20", "2026-11-22", user=admin_auth["user"])
+
+        with db.get_connection() as c:
+            logs = c.execute("SELECT * FROM audit_logs WHERE action = 'CREATE_RESERVATION' AND entity_id = ?", (res["id"],)).fetchall()
+            self.assertTrue(len(logs) >= 1)
+            self.assertEqual(logs[0]["action"], "CREATE_RESERVATION")
+            self.assertEqual(logs[0]["user_id"], admin_auth["user"]["id"])
+
+    def test_reservation_not_confirmed_if_audit_fails(self):
+        room = svc.create_room("902", 100000.0)
+        # Provocar fallo en audit_logs eliminando la tabla temporalmente para verificar rollback
+        with db.get_connection() as c:
+            c.execute("DROP TABLE audit_logs")
+
+        with self.assertRaises(svc.AuditError):
+            svc.create_reservation("Test Falla", room["id"], "2026-11-20", "2026-11-22")
+
+        # Verificar que la reserva NO fue creada en la base de datos
+        with db.get_connection() as c:
+            r = c.execute("SELECT 1 FROM reservations WHERE guest_name = 'Test Falla'").fetchone()
+            self.assertIsNone(r)
+
+
+class TestRoomsAndAvailability(BaseTest):
+    def test_room_out_of_service_not_available_and_cannot_reserve(self):
+        room = svc.create_room("903", 100000.0, status="MANTENIMIENTO")
+        # No debe aparecer en list_rooms con fechas
+        available = svc.list_rooms(check_in="2026-11-20", check_out="2026-11-25")
+        self.assertNotIn(room["id"], [r["id"] for r in available])
+
+        # Intentar reservar habitación fuera de servicio debe fallar
+        with self.assertRaises(ValidationError):
+            svc.create_reservation("Huesped Fallo", room["id"], "2026-11-20", "2026-11-25")
+
+    def test_invalid_dates_rejected(self):
+        room = svc.create_room("904", 100000.0)
+        # Salida antes de entrada
+        with self.assertRaises(ValidationError):
+            svc.create_reservation("Fechas Mal", room["id"], "2026-11-25", "2026-11-20")
+        # Salida igual a entrada
+        with self.assertRaises(ValidationError):
+            svc.create_reservation("Fechas Mal", room["id"], "2026-11-20", "2026-11-20")
+
+
+class TestPaymentsValidation(BaseTest):
+    def test_card_payment_requires_last4_and_auth(self):
+        rid = self.make_reservation()
+        inv = svc.generate_invoice(rid)
+
+        # Sin last4 o auth_number
+        with self.assertRaises(ValidationError):
+            svc.register_payment(inv["id"], 50000.0, "TARJETA", reference="REF")
+
+        with self.assertRaises(ValidationError):
+            svc.register_payment(inv["id"], 50000.0, "TARJETA", card_last4="12", auth_number="AUTH-1")
+
+        # Válido
+        paid = svc.register_payment(inv["id"], 50000.0, "TARJETA", card_last4="4321", auth_number="AUTH-999")
+        self.assertEqual(paid["payments"][-1]["card_last4"], "4321")
+        self.assertEqual(paid["payments"][-1]["auth_number"], "AUTH-999")
+
+    def test_transfer_payment_requires_voucher(self):
+        rid = self.make_reservation()
+        inv = svc.generate_invoice(rid)
+
+        with self.assertRaises(ValidationError):
+            svc.register_payment(inv["id"], 50000.0, "TRANSFERENCIA", reference="")
+
+        paid = svc.register_payment(inv["id"], 50000.0, "TRANSFERENCIA", reference="TRX-123456")
+        self.assertEqual(paid["payments"][-1]["reference"], "TRX-123456")
 
 
 if __name__ == "__main__":
