@@ -12,7 +12,8 @@ const state = {
   selectedRoom: null,
   servicesCatalog: [],
   currentModalReservationId: null,
-  billingSelectedId: null
+  billingSelectedId: null,
+  currentUser: { username: 'recepcion', role: 'RECEPCIONISTA', token: null }
 };
 
 const ACTIVE_STATUSES = ['RESERVADA', 'ACTIVA'];
@@ -70,8 +71,12 @@ function nightsBetween(checkIn, checkOut) {
 // Cliente HTTP: normaliza las respuestas del backend ({...} o {"error": "..."})
 async function api(path, options = {}) {
   const init = { method: options.method || 'GET' };
+  init.headers = { ...(options.headers || {}) };
+  if (state.currentUser && state.currentUser.token) {
+    init.headers['Authorization'] = `Bearer ${state.currentUser.token}`;
+  }
   if (options.body !== undefined) {
-    init.headers = { 'Content-Type': 'application/json' };
+    init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(options.body);
   }
   try {
@@ -107,6 +112,7 @@ function setError(elementId, message) {
 
 // Inicialización de la aplicación
 document.addEventListener('DOMContentLoaded', () => {
+  setupAuthSession();
   setupNavigation();
   setupGuestInputs();
   setupAvailabilityCheck();
@@ -124,6 +130,36 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('check-in-date').value = formatDate(today);
   document.getElementById('check-out-date').value = formatDate(tomorrow);
 });
+
+async function setupAuthSession() {
+  const toggleBtn = document.getElementById('btn-toggle-role');
+  const badge = document.getElementById('session-user-badge');
+
+  const login = async (username, password) => {
+    const res = await api('/api/auth/login', { method: 'POST', body: { username, password } });
+    if (res.ok && res.data) {
+      state.currentUser = { username: res.data.user.username, role: res.data.user.role, token: res.data.token };
+      if (badge) {
+        badge.innerHTML = `👤 Sesión: <strong>${esc(res.data.user.full_name)} (${esc(res.data.user.role)})</strong>`;
+      }
+      if (toggleBtn) {
+        toggleBtn.textContent = res.data.user.role === 'RECEPCIONISTA' ? 'Cambiar a Admin' : 'Cambiar a Recepcionista';
+      }
+    }
+  };
+
+  await login('recepcion', 'recep123');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', async () => {
+      if (state.currentUser.role === 'RECEPCIONISTA') {
+        await login('admin', 'admin123');
+      } else {
+        await login('recepcion', 'recep123');
+      }
+    });
+  }
+}
 
 // Navegación de pestañas laterales
 function setupNavigation() {
@@ -849,9 +885,21 @@ function invoiceBody(invoice, scope, opts) {
             </div>
             <span class="field-error" id="${scope}-err-amount"></span>
           </div>
-          <div class="form-group payment-ref">
-            <label for="${scope}-pay-ref">Referencia / Número de comprobante (opcional)</label>
-            <input type="text" id="${scope}-pay-ref" maxlength="100" placeholder="Ej: 004512" autocomplete="off">
+          <!-- Campos dinámicos según el método -->
+          <div class="form-group payment-ref ${scope}-field-ref">
+            <label for="${scope}-pay-ref">Número de comprobante / Referencia</label>
+            <input type="text" id="${scope}-pay-ref" maxlength="100" placeholder="Ej: TRX-123456" autocomplete="off">
+            <span class="field-error" id="${scope}-err-ref"></span>
+          </div>
+          <div class="form-group ${scope}-field-card hidden">
+            <label for="${scope}-pay-card-last4">Últimos 4 dígitos tarjeta</label>
+            <input type="text" id="${scope}-pay-card-last4" maxlength="4" placeholder="Ej: 4321" autocomplete="off">
+            <span class="field-error" id="${scope}-err-card"></span>
+          </div>
+          <div class="form-group ${scope}-field-card hidden">
+            <label for="${scope}-pay-auth">Número de autorización</label>
+            <input type="text" id="${scope}-pay-auth" maxlength="50" placeholder="Ej: AUTH-987" autocomplete="off">
+            <span class="field-error" id="${scope}-err-auth"></span>
           </div>
         </div>
         <span class="field-error" id="${scope}-err-payment"></span>
@@ -863,11 +911,19 @@ function invoiceBody(invoice, scope, opts) {
     ? '<tr><td colspan="4" style="text-align:center; color: var(--text-muted); padding: 1rem;">Aún no se han registrado pagos.</td></tr>'
     : invoice.payments.map(p => {
         const m = PAYMENT_METHODS.find(x => x.value === p.payment_method);
+        let extraInfo = '';
+        if (p.payment_method === 'TARJETA') {
+          extraInfo = `Terminada en ${esc(p.card_last4 || '****')} (Aut: ${esc(p.auth_number || '-')})`;
+        } else if (p.reference) {
+          extraInfo = esc(p.reference);
+        } else {
+          extraInfo = '<span style="color:var(--text-muted)">-</span>';
+        }
         return `<tr>
           <td>${m ? m.label : esc(p.payment_method)}</td>
           <td><strong>${formatCOP(p.amount)}</strong></td>
           <td>${formatDateTime(p.paid_at)}</td>
-          <td>${p.reference ? esc(p.reference) : '<span style="color:var(--text-muted)">-</span>'}</td>
+          <td>${extraInfo}</td>
         </tr>`;
       }).join('');
   const history = `
@@ -882,7 +938,7 @@ function invoiceBody(invoice, scope, opts) {
   return items + totals + paymentForm + history;
 }
 
-// Generar (con confirmación) o consultar la factura de la reserva
+// Generar o consultar la factura de la reserva
 async function handleInvoiceButton(container, reservationId, invoice, opts) {
   const scope = opts.scope || 'modal';
   const errEl = container.querySelector(`#${scope}-err-invoice`);
@@ -892,6 +948,14 @@ async function handleInvoiceButton(container, reservationId, invoice, opts) {
   if (invoice) {
     result = await api(`/api/invoices/${invoice.id}`); // consulta: refresca desde el servidor
   } else {
+    // Primero consultar si ya existe una factura para no intentar POST duplicado
+    const checkExisting = await api(`/api/reservations/${reservationId}/invoice`);
+    if (checkExisting.ok && checkExisting.data) {
+      renderBillingPanel(container, reservationId, checkExisting.data, opts);
+      if (opts.onChange) opts.onChange(checkExisting.data);
+      return;
+    }
+
     const ok = window.confirm('Se generará la factura de esta reserva. Después ya no podrás agregar más consumos. ¿Continuar?');
     if (!ok) return;
     result = await api(`/api/reservations/${reservationId}/invoice`, { method: 'POST' });
@@ -936,7 +1000,35 @@ function wirePaymentForm(container, invoice, opts) {
     errPayment.textContent = '';
   };
   amount.addEventListener('input', refreshLive);
-  method.addEventListener('change', () => { errMethod.textContent = ''; errPayment.textContent = ''; });
+
+  // Alternar campos según método de pago
+  const cardFields = container.querySelectorAll(`.${scope}-field-card`);
+  const refField = container.querySelector(`.${scope}-field-ref`);
+  const cardLast4Input = container.querySelector(`#${scope}-pay-card-last4`);
+  const authInput = container.querySelector(`#${scope}-pay-auth`);
+  const errCard = container.querySelector(`#${scope}-err-card`);
+  const errAuth = container.querySelector(`#${scope}-err-auth`);
+  const errRef = container.querySelector(`#${scope}-err-ref`);
+
+  method.addEventListener('change', () => {
+    errMethod.textContent = '';
+    errPayment.textContent = '';
+    if (errCard) errCard.textContent = '';
+    if (errAuth) errAuth.textContent = '';
+    if (errRef) errRef.textContent = '';
+
+    const isCard = method.value === 'TARJETA';
+    const isTransfer = method.value === 'TRANSFERENCIA';
+
+    cardFields.forEach(el => el.classList.toggle('hidden', !isCard));
+    if (refField) {
+      refField.classList.toggle('hidden', isCard);
+      const label = refField.querySelector('label');
+      if (label) {
+        label.textContent = isTransfer ? 'Número de comprobante (obligatorio)' : 'Referencia (opcional)';
+      }
+    }
+  });
 
   payAll.addEventListener('click', () => {
     amount.value = invoice.balance;
@@ -948,12 +1040,35 @@ function wirePaymentForm(container, invoice, opts) {
     e.preventDefault();
     errMethod.textContent = '';
     errPayment.textContent = '';
+    if (errCard) errCard.textContent = '';
+    if (errAuth) errAuth.textContent = '';
+    if (errRef) errRef.textContent = '';
 
     const methodProblem = method.value ? '' : 'Selecciona un método de pago.';
     const problem = amountProblem(true);
     errMethod.textContent = methodProblem;
     errAmount.textContent = problem;
-    if (methodProblem || problem) return;
+
+    let hasExtraError = false;
+    if (method.value === 'TARJETA') {
+      const last4 = cardLast4Input.value.trim();
+      const auth = authInput.value.trim();
+      if (!last4 || last4.length !== 4 || !/^\d{4}$/.test(last4)) {
+        errCard.textContent = 'Ingresa los 4 dígitos.';
+        hasExtraError = true;
+      }
+      if (!auth) {
+        errAuth.textContent = 'Ingresa el número de autorización.';
+        hasExtraError = true;
+      }
+    } else if (method.value === 'TRANSFERENCIA') {
+      if (!ref.value.trim()) {
+        errRef.textContent = 'El comprobante es obligatorio.';
+        hasExtraError = true;
+      }
+    }
+
+    if (methodProblem || problem || hasExtraError) return;
 
     submit.disabled = true;
     submit.textContent = '⏳ Registrando pago...';
@@ -963,7 +1078,9 @@ function wirePaymentForm(container, invoice, opts) {
       body: {
         amount: Number(amount.value),
         payment_method: method.value,
-        reference: ref.value.trim() || null
+        reference: ref.value.trim() || null,
+        card_last4: cardLast4Input ? cardLast4Input.value.trim() || null : null,
+        auth_number: authInput ? authInput.value.trim() || null : null
       }
     });
 
