@@ -1,205 +1,91 @@
-"""
-Servidor HTTP nativo en Python para Medallotel.
-Sirve los archivos estáticos de frontend y los endpoints REST de backend.
-"""
-import http.server
-import socketserver
+"""API REST de Medallotel (solo librería estándar). Ejecutar: python server.py"""
 import json
-import urllib.parse
-import os
-import sys
-import mimetypes
+import re
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Asegurar que la ruta base esté en sys.path para soportar tanto ejecución directa como módulo
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
-
-from backend.db import init_db
-from backend.services import (
-    BusinessError,
-    find_guest_by_doc,
-    get_available_rooms,
-    create_reservation,
-    get_active_reservations,
-    get_reservation_detail,
-    get_services_catalog,
-    get_reservation_consumptions,
-    add_consumption_to_reservation
-)
+import db
+import services as svc
 
 PORT = 8000
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 
-class MedallotelRequestHandler(http.server.BaseHTTPRequestHandler):
 
-    def send_json(self, status_code, payload):
-        body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(body)))
+def _body(h, groups):
+    return h.read_json()
+
+
+ROUTES = [
+    # (método, regex, función(handler, *ids) -> (status, data))
+    ("GET", r"/api/rooms", lambda h: (200, svc.list_rooms())),
+    ("POST", r"/api/rooms", lambda h: (201, svc.create_room(
+        h.body.get("number"), h.body.get("price_per_night"), h.body.get("room_type", "SENCILLA")))),
+    ("GET", r"/api/reservations", lambda h: (200, svc.list_reservations())),
+    ("POST", r"/api/reservations", lambda h: (201, svc.create_reservation(
+        h.body.get("guest_name"), h.body.get("room_id"), h.body.get("check_in"),
+        h.body.get("check_out"), h.body.get("guest_document")))),
+    ("GET", r"/api/reservations/(\d+)", lambda h, i: (200, svc.get_reservation(int(i)))),
+    ("POST", r"/api/reservations/(\d+)/cancel", lambda h, i: (200, svc.cancel_reservation(int(i)))),
+    ("GET", r"/api/services", lambda h: (200, svc.list_services())),
+    ("POST", r"/api/services", lambda h: (201, svc.create_service(
+        h.body.get("name"), h.body.get("price")))),
+    ("GET", r"/api/reservations/(\d+)/consumptions",
+        lambda h, i: (200, svc.list_consumptions(int(i)))),
+    ("POST", r"/api/reservations/(\d+)/consumptions", lambda h, i: (201, svc.add_consumption(
+        int(i), h.body.get("service_id"), h.body.get("quantity", 1)))),
+    # ETAPA 3
+    ("POST", r"/api/reservations/(\d+)/invoice", lambda h, i: (200, svc.generate_invoice(int(i)))),
+    ("GET", r"/api/invoices/(\d+)", lambda h, i: (200, svc.get_invoice_detail(invoice_id=int(i)))),
+    ("POST", r"/api/invoices/(\d+)/payments", lambda h, i: (201, svc.register_payment(
+        int(i), h.body.get("amount"), h.body.get("payment_method"), h.body.get("reference")))),
+]
+
+
+class Handler(BaseHTTPRequestHandler):
+    body = {}
+
+    def _send(self, status, data):
+        raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(raw)
 
-    def send_error_json(self, status_code, message, field=None):
-        payload = {"success": False, "error": message}
-        if field:
-            payload["field"] = field
-        self.send_json(status_code, payload)
-
-    def parse_json_body(self):
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length == 0:
-            return {}
-        body_bytes = self.rfile.read(content_length)
+    def _dispatch(self, method):
+        path = self.path.split("?")[0].rstrip("/") or "/"
         try:
-            return json.loads(body_bytes.decode('utf-8'))
-        except json.JSONDecodeError:
-            raise BusinessError("El cuerpo de la petición debe ser un JSON válido.")
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            try:
+                self.body = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                return self._send(400, {"error": "JSON inválido"})
+            if not isinstance(self.body, dict):
+                return self._send(400, {"error": "El cuerpo debe ser un objeto JSON"})
+            for m, pattern, fn in ROUTES:
+                match = re.fullmatch(pattern, path)
+                if m == method and match:
+                    status, data = fn(self, *match.groups())
+                    return self._send(status, data)
+            return self._send(404, {"error": "Ruta no encontrada"})
+        except svc.NotFoundError as e:
+            self._send(404, {"error": str(e)})
+        except svc.ValidationError as e:
+            self._send(400, {"error": str(e)})
+        except Exception as e:  # noqa
+            self._send(500, {"error": f"Error interno: {e}"})
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        query = urllib.parse.parse_qs(parsed.query)
-
-        # Rutas de API
-        if path.startswith('/api/'):
-            try:
-                if path == '/api/guests/search':
-                    doc = query.get('doc_number', [''])[0]
-                    guest = find_guest_by_doc(doc)
-                    if not guest:
-                        self.send_json(404, {"success": False, "error": f"Huésped con documento '{doc}' no encontrado.", "field": "doc_number"})
-                    else:
-                        self.send_json(200, {"success": True, "data": guest})
-                    return
-
-                elif path == '/api/rooms/available':
-                    check_in = query.get('check_in', [''])[0]
-                    check_out = query.get('check_out', [''])[0]
-                    rooms = get_available_rooms(check_in, check_out)
-                    self.send_json(200, {"success": True, "data": rooms})
-                    return
-
-                elif path == '/api/reservations/active':
-                    reservations = get_active_reservations()
-                    self.send_json(200, {"success": True, "data": reservations})
-                    return
-
-                elif path == '/api/services':
-                    catalog = get_services_catalog()
-                    self.send_json(200, {"success": True, "data": catalog})
-                    return
-
-                elif path.startswith('/api/reservations/') and path.endswith('/consumptions'):
-                    parts = path.strip('/').split('/')
-                    if len(parts) == 4 and parts[2].isdigit():
-                        res_id = int(parts[2])
-                        consumptions = get_reservation_consumptions(res_id)
-                        self.send_json(200, {"success": True, "data": consumptions})
-                        return
-
-                elif path.startswith('/api/reservations/'):
-                    res_id_str = path.split('/')[-1]
-                    if res_id_str.isdigit():
-                        detail = get_reservation_detail(int(res_id_str))
-                        if not detail:
-                            self.send_json(404, {"success": False, "error": "Reserva no encontrada."})
-                        else:
-                            self.send_json(200, {"success": True, "data": detail})
-                        return
-
-                self.send_json(404, {"success": False, "error": "Endpoint no encontrado."})
-            except BusinessError as e:
-                self.send_error_json(400, e.message, e.field)
-            except Exception as e:
-                self.send_error_json(500, f"Error interno del servidor: {str(e)}")
-            return
-
-        # Servir archivos estáticos del frontend
-        if path == '/' or path == '':
-            path = '/index.html'
-
-        filepath = os.path.join(FRONTEND_DIR, path.lstrip('/'))
-        if os.path.exists(filepath) and os.path.isfile(filepath):
-            mime_type, _ = mimetypes.guess_type(filepath)
-            if not mime_type:
-                mime_type = 'text/plain'
-            if mime_type.startswith('text/') or mime_type in ('application/javascript', 'application/json'):
-                mime_type += '; charset=utf-8'
-
-            with open(filepath, 'rb') as f:
-                content = f.read()
-
-            self.send_response(200)
-            self.send_header('Content-Type', mime_type)
-            self.send_header('Content-Length', str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-        else:
-            self.send_response(404)
-            self.send_header('Content-Type', 'text/plain; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(b"404 No encontrado")
+        self._dispatch("GET")
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        self._dispatch("POST")
 
-        if path == '/api/reservations':
-            try:
-                data = self.parse_json_body()
-                guest_id = data.get('guest_id')
-                room_id = data.get('room_id')
-                check_in = data.get('check_in_date')
-                check_out = data.get('check_out_date')
 
-                if not guest_id:
-                    raise BusinessError("Debe seleccionar un huésped.", field="doc_number")
-                if not room_id:
-                    raise BusinessError("Debe seleccionar una habitación disponible.", field="room_selection")
+def run(port=PORT):
+    db.init_db()
+    print(f"Medallotel escuchando en http://localhost:{port}")
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
-                reservation = create_reservation(guest_id, room_id, check_in, check_out)
-                self.send_json(201, {"success": True, "data": reservation})
-            except BusinessError as e:
-                self.send_error_json(400, e.message, e.field)
-            except Exception as e:
-                self.send_error_json(500, f"Error interno al crear reserva: {str(e)}")
-            return
 
-        elif path.startswith('/api/reservations/') and path.endswith('/consumptions'):
-            try:
-                parts = path.strip('/').split('/')
-                if len(parts) == 4 and parts[2].isdigit():
-                    res_id = int(parts[2])
-                    data = self.parse_json_body()
-                    service_id = data.get('service_id')
-                    quantity = data.get('quantity')
-                    new_item = add_consumption_to_reservation(res_id, service_id, quantity)
-                    self.send_json(201, {"success": True, "data": new_item})
-                    return
-                self.send_json(404, {"success": False, "error": "Ruta inválida."})
-            except BusinessError as e:
-                self.send_error_json(400, e.message, e.field)
-            except Exception as e:
-                self.send_error_json(500, f"Error interno al registrar consumo: {str(e)}")
-            return
-
-        self.send_json(404, {"success": False, "error": "Endpoint no encontrado."})
-
-def run_server(port=PORT):
-    init_db()
-    with socketserver.TCPServer(("", port), MedallotelRequestHandler) as httpd:
-        print(f"==================================================")
-        print(f"  Medallotel - Sistema de Recepción Hotelera")
-        print(f"  Servidor iniciado en: http://localhost:{port}")
-        print(f"  Presiona Ctrl+C para detener el servidor")
-        print(f"==================================================")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nServidor detenido correctamente.")
-
-if __name__ == '__main__':
-    run_server()
+if __name__ == "__main__":
+    run()
